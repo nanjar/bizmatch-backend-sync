@@ -39,6 +39,9 @@ export const TABLE_SYNC_CONFIGS: TableSyncConfig[] = [
       'feedback_link', 'ev_lat', 'ev_long', 'status', 'poster',
       'poster_mobile', 'bizmatch_open', 'multiple_session_entry', 'pre_reg',
       'ev_rate', 'ev_visited', 'created_date', 'last_update',
+      // Event key 6-digit untuk login exhibitor app (event key + no. HP ->
+      // OTP WA). select:false di entity Postgres-nya - lihat event.entity.ts.
+      'ev_token',
     ],
     transform: passthrough,
   },
@@ -283,6 +286,69 @@ export const TABLE_SYNC_CONFIGS: TableSyncConfig[] = [
     pgTable: 'meeting_interest',
     conflictKeys: ['events_id', 'meeting_id', 'interest_id'],
     columns: ['events_id', 'meeting_id', 'interest_id'],
+    transform: passthrough,
+  },
+  // --- Ditambahkan: exhibitor_company / exhibitor / exhibitor_product ---
+  // Gap ditemukan saat wiring exhibitor app (Sept 2026): apivisitor sudah
+  // punya entity untuk 3 tabel ini (Company Detail, Product Catalog) tapi
+  // tidak pernah masuk daftar sync - datanya di Postgres jadi statis sejak
+  // kapanpun tabel itu dibuat manual pertama kali. Oversight, bukan disengaja.
+  {
+    mysqlTable: 'exhibitor_company',
+    pgTable: 'exhibitor_company',
+    conflictKeys: ['events_id', 'id'],
+    columns: [
+      'events_id', 'id', 'company_name', 'details', 'created', 'logo',
+      'approval_status', 'country', 'company_profile_url', 'language_used',
+      'last_update', 'company_website',
+    ],
+    transform: passthrough,
+  },
+  {
+    // MySQL table is `exhibitor` (staff/PIC data), tapi di Postgres sudah
+    // dipetakan sebagai `exhibitor_contact` oleh apivisitor
+    // (lihat exhibitor.entity.ts: @Entity('exhibitor_contact')) - nama
+    // `exhibitor` terlalu generic & rawan ambigu dengan konsep "exhibitor"
+    // sebagai company. pgTable HARUS exhibitor_contact, bukan exhibitor.
+    //
+    // curr_otp, device_id, token, exhibitor_password SENGAJA tidak disync -
+    // itu mekanisme login admin panel PHP lama (email+password), tidak
+    // dipakai exhibitor app (yang pakai ev_token + WA OTP terpisah).
+    // Tidak perlu duplikasi credential lama ke Postgres.
+    mysqlTable: 'exhibitor',
+    pgTable: 'exhibitor_contact',
+    conflictKeys: ['events_id', 'id'],
+    columns: [
+      'events_id', 'id', 'fullname', 'country_code', 'phone', 'company_id',
+      'approval_status', 'created_date', 'last_update', 'user_level',
+      'in_charge', 'job_title', 'exhibitor_email',
+    ],
+    transform: passthrough,
+  },
+  {
+    mysqlTable: 'exhibitor_product',
+    pgTable: 'exhibitor_product',
+    conflictKeys: ['events_id', 'company_id', 'id'],
+    columns: [
+      'events_id', 'company_id', 'id', 'product_name', 'product_url',
+      'created', 'salesperson', 'sales_phone', 'product_qr',
+      'approval_status', 'brochure', 'promo_url', 'instagram',
+      'product_logo', 'investment_fee', 'branch_total', 'brand_established',
+      'tiktok_url', 'facebook_url', 'twitter_url', 'product_description',
+    ],
+    transform: passthrough,
+  },
+  // --- Manajemen anggota booth exhibitor app (native MySQL table baru,
+  // dibuat manual - lihat create-exhibitor_member_status_sync.sql) ---
+  {
+    mysqlTable: 'exhibitor_member_status_sync',
+    pgTable: 'exhibitor_member_status_sync',
+    conflictKeys: ['events_id', 'exhibitor_id'],
+    columns: [
+      'events_id', 'exhibitor_id', 'member_status', 'can_scan', 'can_chat',
+      'is_owner', 'invited_by', 'invited_at', 'activated_at', 'removed_at',
+      'last_update',
+    ],
     transform: passthrough,
   },
 ];
