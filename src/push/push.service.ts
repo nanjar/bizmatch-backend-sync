@@ -103,10 +103,33 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * BEDA dari processStagingTable generik - link_click_log pakai kolom
-   * clicked_at (bukan created_at) buat ORDER BY, dan tabelnya insert-only
-   * (gak ada action type, tinggal INSERT langsung ke MySQL).
+   * REDESIGN (Sept 2026): ternyata MySQL sudah punya 6 tabel legacy
+   * terpisah per tipe link (instagram_clicked_v2, facebook_clicked,
+   * tiktok_clicked, twitter_clicked, promo_clicked_v2,
+   * producturl_clicked_v2) - BUKAN satu tabel gabungan kayak
+   * link_click_log_sync yang saya buat sebelumnya (SALAH, sudah dihapus
+   * dari rencana). Skemanya pakai pola COUNTER (times_clicked bertambah),
+   * bukan log per-kejadian - PK (events_id, company_id, product_id,
+   * guests_id, member_guests_id).
+   *
+   * WEBSITE & BROCHURE TIDAK punya tabel legacy (cuma 6 tipe di atas) -
+   * baris dengan link_type itu di-skip dari push (tetap tercatat di
+   * Postgres buat Reports internal exhibitor app, gak pernah nyampe ke
+   * MySQL sampai ada tabel yang jelas nanti).
+   *
+   * product_id NULL (company belum punya product sama sekali) juga
+   * di-skip - tabel legacy product_id NOT NULL, gak ada nilai valid buat
+   * dikirim.
    */
+  private readonly LINK_TYPE_TABLE_MAP: Record<string, string> = {
+    INSTAGRAM: 'instagram_clicked_v2',
+    FACEBOOK: 'facebook_clicked',
+    TIKTOK: 'tiktok_clicked',
+    TWITTER: 'twitter_clicked',
+    PROMO: 'promo_clicked_v2',
+    PRODUCT_URL: 'producturl_clicked_v2',
+  };
+
   async pushLinkClicks(): Promise<PushResult> {
     const startedAt = Date.now();
     let processed = 0;
@@ -121,21 +144,34 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 
       for (const row of rows) {
         try {
-          await this.mysqlQuery(
-            `INSERT INTO link_click_log_sync
-               (id, events_id, company_id, product_id, guests_id, link_type, clicked_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE id = id`,
-            [
-              row.id,
-              row.events_id,
-              row.company_id,
-              row.product_id,
-              row.guests_id,
-              row.link_type,
-              row.clicked_at,
-            ],
-          );
+          const table = this.LINK_TYPE_TABLE_MAP[row.link_type];
+
+          if (!table) {
+            // WEBSITE/BROCHURE - gak ada tabel legacy, skip push tapi
+            // tetap tandai pushed supaya gak dicoba ulang selamanya.
+            this.logger.debug(
+              `link_click_log id=${row.id}: linkType ${row.link_type} gak punya tabel legacy, skip push`,
+            );
+          } else if (row.product_id == null) {
+            this.logger.warn(
+              `link_click_log id=${row.id}: product_id NULL (company ${row.company_id} belum punya product), skip push`,
+            );
+          } else {
+            await this.mysqlQuery(
+              `INSERT INTO \`${table}\`
+                 (events_id, company_id, product_id, guests_id, member_guests_id, times_clicked)
+               VALUES (?, ?, ?, ?, ?, 1)
+               ON DUPLICATE KEY UPDATE times_clicked = times_clicked + 1`,
+              [
+                row.events_id,
+                row.company_id,
+                row.product_id,
+                row.guests_id,
+                row.member_guests_id,
+              ],
+            );
+          }
+
           await pgClient.query(
             `UPDATE "link_click_log" SET "pushed_at" = now() WHERE "id" = $1`,
             [row.id],
