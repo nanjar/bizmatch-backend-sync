@@ -77,6 +77,7 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
       await this.pushMeetingActions(),
       await this.pushMemberActions(),
       await this.pushLeadActions(),
+      await this.pushLinkClicks(),
     ];
   }
 
@@ -99,6 +100,62 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
       'exhibitor_app_lead_action',
       (row) => this.applyLeadAction(row),
     );
+  }
+
+  /**
+   * BEDA dari processStagingTable generik - link_click_log pakai kolom
+   * clicked_at (bukan created_at) buat ORDER BY, dan tabelnya insert-only
+   * (gak ada action type, tinggal INSERT langsung ke MySQL).
+   */
+  async pushLinkClicks(): Promise<PushResult> {
+    const startedAt = Date.now();
+    let processed = 0;
+    let failed = 0;
+    const pgClient = await this.pgPool.connect();
+
+    try {
+      const { rows } = await pgClient.query(
+        `SELECT * FROM "link_click_log" WHERE "pushed_at" IS NULL ORDER BY "clicked_at" ASC LIMIT $1`,
+        [this.batchSize],
+      );
+
+      for (const row of rows) {
+        try {
+          await this.mysqlQuery(
+            `INSERT INTO link_click_log_sync
+               (id, events_id, company_id, product_id, guests_id, link_type, clicked_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE id = id`,
+            [
+              row.id,
+              row.events_id,
+              row.company_id,
+              row.product_id,
+              row.guests_id,
+              row.link_type,
+              row.clicked_at,
+            ],
+          );
+          await pgClient.query(
+            `UPDATE "link_click_log" SET "pushed_at" = now() WHERE "id" = $1`,
+            [row.id],
+          );
+          processed++;
+        } catch (err: any) {
+          failed++;
+          this.logger.error(`Push failed for link_click_log id=${row.id}: ${err.message}`, err.stack);
+        }
+      }
+    } finally {
+      pgClient.release();
+    }
+
+    return {
+      table: 'link_click_log',
+      rowsProcessed: processed,
+      rowsFailed: failed,
+      durationMs: Date.now() - startedAt,
+    };
   }
 
   /**
