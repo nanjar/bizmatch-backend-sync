@@ -145,11 +145,14 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
     const approvalStatus = row.action === 'APPROVE' ? 'AP' : 'CL';
     const status = row.action === 'APPROVE' ? 'OPEN' : 'CANCEL';
 
+    // meeting_score (Hot/Warm/Cold) cuma di-set saat APPROVE - reject
+    // tidak punya konsep temperature. COALESCE(?, meeting_score) supaya
+    // kalau row.score kosong (reject), nilai lama tidak ke-null-kan.
     await this.mysqlQuery(
       `UPDATE events_meeting_v2
-       SET approval_status = ?, \`Status\` = ?, last_update = NOW()
+       SET approval_status = ?, \`Status\` = ?, meeting_score = COALESCE(?, meeting_score), last_update = NOW()
        WHERE events_id = ? AND id = ?`,
-      [approvalStatus, status, row.events_id, row.meeting_id],
+      [approvalStatus, status, row.score, row.events_id, row.meeting_id],
     );
   }
 
