@@ -206,6 +206,17 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
         );
         break;
 
+      case 'UPDATE_PERMISSION':
+        // Murni ubah can_scan/can_chat - TIDAK menyentuh member_status atau
+        // activated_at, beda dari ACTIVATE yang juga mengubah status.
+        await this.mysqlQuery(
+          `UPDATE exhibitor_member_status_sync
+           SET can_scan = COALESCE(?, can_scan), can_chat = COALESCE(?, can_chat), last_update = NOW()
+           WHERE events_id = ? AND exhibitor_id = ?`,
+          [can_scan, can_chat, events_id, exhibitor_id],
+        );
+        break;
+
       default:
         throw new Error(`Unknown member action: ${action}`);
     }
