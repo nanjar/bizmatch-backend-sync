@@ -184,7 +184,7 @@ export const TABLE_SYNC_CONFIGS: TableSyncConfig[] = [
       'initiated_by', 'initiator_id', 'initiator_member_id',
       'com_direction', 'last_update', 'meeting_location', 'is_done',
       'actual_startdatetime', 'actual_enddatetime', 'agenda_id',
-      'meeting_timeslot', 'meeting_score',
+      'meeting_timeslot', 'meeting_score', 'company_id',
     ],
     transform: passthrough,
   },
