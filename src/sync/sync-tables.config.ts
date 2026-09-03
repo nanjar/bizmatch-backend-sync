@@ -351,4 +351,15 @@ export const TABLE_SYNC_CONFIGS: TableSyncConfig[] = [
     ],
     transform: passthrough,
   },
+  // --- Satu exhibitor_contact bisa mewakili lebih dari satu company
+  // (junction table murni, ditemukan Sept 2026 saat desain login exhibitor
+  // app - exhibitor_contact.company_id ternyata cuma "company utama" lama,
+  // bukan daftar lengkap) ---
+  {
+    mysqlTable: 'exhibitor_have_company',
+    pgTable: 'exhibitor_have_company',
+    conflictKeys: ['events_id', 'exhibitor_id', 'company_id'],
+    columns: ['events_id', 'exhibitor_id', 'company_id'],
+    transform: passthrough,
+  },
 ];
