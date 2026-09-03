@@ -244,6 +244,16 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
    * pernah nyentuh tabel ini sama sekali).
    */
   private async applyLeadAction(row: any): Promise<void> {
+    if (row.action === 'UPDATE_NOTES') {
+      await this.mysqlQuery(
+        `UPDATE exhibitor_lead_sync SET notes = ?, last_update = NOW() WHERE id = ?`,
+        [row.notes, row.lead_id],
+      );
+      return;
+    }
+
+    // action === 'CREATE' (default, termasuk row lama sebelum kolom
+    // action ditambahkan)
     const {
       events_id,
       company_id,
