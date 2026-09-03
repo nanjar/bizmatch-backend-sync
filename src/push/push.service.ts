@@ -73,7 +73,11 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
   }
 
   async pushAll(): Promise<PushResult[]> {
-    return [await this.pushMeetingActions(), await this.pushMemberActions()];
+    return [
+      await this.pushMeetingActions(),
+      await this.pushMemberActions(),
+      await this.pushLeadActions(),
+    ];
   }
 
   async pushMeetingActions(): Promise<PushResult> {
@@ -87,6 +91,13 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
     return this.processStagingTable(
       'exhibitor_app_member_action',
       (row) => this.applyMemberAction(row),
+    );
+  }
+
+  async pushLeadActions(): Promise<PushResult> {
+    return this.processStagingTable(
+      'exhibitor_app_lead_action',
+      (row) => this.applyLeadAction(row),
     );
   }
 
@@ -222,6 +233,77 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
 
       default:
         throw new Error(`Unknown member action: ${action}`);
+    }
+  }
+
+  /**
+   * Lead baru dari My Booth (scan/tambah manual). Selalu INSERT ke
+   * exhibitor_lead_sync (source of truth utama). Kalau source SCAN/
+   * EVENT_GUEST DAN ada guests_id valid, JUGA INSERT/UPDATE checkin_booth
+   * (tabel legacy, PK butuh guests_id NOT NULL - makanya MANUAL tidak
+   * pernah nyentuh tabel ini sama sekali).
+   */
+  private async applyLeadAction(row: any): Promise<void> {
+    const {
+      events_id,
+      company_id,
+      venue_id,
+      space_id,
+      actor_exhibitor_id,
+      guests_id,
+      source,
+      manual_fullname,
+      manual_phone,
+      manual_company,
+      notes,
+      created_at,
+    } = row;
+
+    await this.mysqlQuery(
+      `INSERT INTO exhibitor_lead_sync
+         (events_id, company_id, venue_id, space_id, exhibitor_id, guests_id,
+          source, manual_fullname, manual_phone, manual_company, notes,
+          created_at, last_update)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        events_id,
+        company_id,
+        venue_id,
+        space_id,
+        actor_exhibitor_id,
+        guests_id,
+        source,
+        manual_fullname,
+        manual_phone,
+        manual_company,
+        notes,
+        created_at,
+      ],
+    );
+
+    if ((source === 'SCAN' || source === 'EVENT_GUEST') && guests_id != null) {
+      await this.mysqlQuery(
+        `INSERT INTO checkin_booth
+           (events_id, company_id, venue_id, space_id, scan_by, guests_id,
+            checkin_datetime, member_id, visitor_notes)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           checkin_datetime = VALUES(checkin_datetime),
+           member_id = VALUES(member_id),
+           visitor_notes = VALUES(visitor_notes),
+           last_update = NOW()`,
+        [
+          events_id,
+          company_id,
+          venue_id,
+          space_id,
+          String(actor_exhibitor_id),
+          guests_id,
+          created_at,
+          actor_exhibitor_id,
+          notes,
+        ],
+      );
     }
   }
 

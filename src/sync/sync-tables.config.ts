@@ -362,4 +362,19 @@ export const TABLE_SYNC_CONFIGS: TableSyncConfig[] = [
     columns: ['events_id', 'exhibitor_id', 'company_id'],
     transform: passthrough,
   },
+  // --- My Booth: lead management (native MySQL table baru, dibuat manual
+  // - lihat create-exhibitor_lead_sync.sql). Independen dari checkin_booth,
+  // nampung semua source (SCAN/EVENT_GUEST/MANUAL). ---
+  {
+    mysqlTable: 'exhibitor_lead_sync',
+    pgTable: 'exhibitor_lead_sync',
+    conflictKeys: ['id'],
+    columns: [
+      'id', 'events_id', 'company_id', 'venue_id', 'space_id',
+      'exhibitor_id', 'guests_id', 'source', 'manual_fullname',
+      'manual_phone', 'manual_company', 'notes', 'created_at',
+      'last_update',
+    ],
+    transform: passthrough,
+  },
 ];
