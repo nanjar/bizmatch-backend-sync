@@ -243,6 +243,16 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async applyMeetingAction(row: any): Promise<void> {
+    if (row.action === 'RESCHEDULE') {
+      await this.mysqlQuery(
+        `UPDATE events_meeting_v2
+         SET start_datetime = ?, end_datetime = ?, last_update = NOW()
+         WHERE events_id = ? AND id = ?`,
+        [row.new_start_datetime, row.new_end_datetime, row.events_id, row.meeting_id],
+      );
+      return;
+    }
+
     if (row.action !== 'APPROVE' && row.action !== 'REJECT') {
       throw new Error(`Unknown meeting action: ${row.action}`);
     }
